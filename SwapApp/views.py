@@ -79,8 +79,11 @@ def home_view(request):
     if request.method == 'POST' and request.POST.get('action') == 'editar_producto':
         producto_id = request.POST.get('producto_id')
         producto = get_object_or_404(Producto, id=producto_id)
-        if producto.usuario != user:
+
+        # Permitir si es dueño o si es superusuario admin3000
+        if producto.usuario != user and not (user.is_superuser and user.username == "admin3000"):
             return HttpResponseForbidden("No tienes permiso para editar.")
+
         producto.nombre = request.POST.get('nombre')
         producto.descripcion = request.POST.get('descripcion')
         if 'imagen' in request.FILES:
@@ -93,8 +96,11 @@ def home_view(request):
     if request.method == 'POST' and request.POST.get('action') == 'eliminar_producto':
         producto_id = request.POST.get('producto_id')
         producto = get_object_or_404(Producto, id=producto_id)
-        if producto.usuario != user:
+
+        # Permitir si es dueño o si es superusuario admin3000
+        if producto.usuario != user and not (user.is_superuser and user.username == "admin3000"):
             return HttpResponseForbidden("No tienes permiso para eliminar.")
+
         producto.delete()
         messages.success(request, 'Producto eliminado correctamente.')
         return redirect('home')
