@@ -1,0 +1,307 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Chats - SwapPlace{% endblock %}
+
+{% block content %}
+<style>
+#calificacionOverlay {
+    
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 3000;
+    justify-content: center;
+    align-items: center;
+}
+.calificacion-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 22px;
+    width: 360px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+}
+.star { font-size: 2rem; color: #cfcfcf; cursor:pointer; margin: 0 6px; }
+.star.selected { color: #FFD700; transform: scale(1.05); }
+
+#chat-list .list-group-item { border-radius:8px; margin-bottom:6px; }
+#chat-box {
+    background: rgba(110,201,255,0.06);
+    border-radius:12px;
+    padding:12px;
+    height:350px;
+    overflow-y:auto;
+    border:1px solid #e3f3ff;
+}
+.bubble {
+    display:inline-block;
+    padding:10px 14px;
+    border-radius:14px;
+    max-width:78%;
+    margin:6px 0;
+}
+.bubble.me { background:#138b1f; color:#fff; border-bottom-right-radius:4px; }
+.bubble.them { background:#fff; color:#222; border:1px solid rgba(10,20,40,0.06); border-bottom-left-radius:4px; }
+</style>
+
+<div class="row mt-4">
+
+  <div class="col-md-4">
+
+    <!-- 📌 Buscador agregado -->
+    <input type="text" id="buscador" class="form-control mb-3" placeholder="Buscar chats...">
+
+    <h5 class="text-success">Chats</h5>
+    <div class="list-group" id="chat-list">
+      {% for chat in chats|dictsortreversed:"creado" %}
+        <a href="{% url 'chat_detalle' chat.id %}"
+          class="list-group-item list-group-item-action producto-item {% if chat_seleccionado and chat.id == chat_seleccionado.id %}active{% endif %}">
+          <div class="fw-semibold">{{ chat.trueque.producto.nombre }}</div>
+          <div class="small text-muted">Iniciado: {{ chat.creado|date:"d/m/Y H:i" }}</div>
+        </a>
+      {% empty %}
+        <div class="card p-3"><div class="text-muted">No tienes chats aún.</div></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    {% if chat_seleccionado %}
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h5 class="mb-0 text-success">Chat con
+            {% for u in chat_seleccionado.usuarios.all %}
+              {% if u != user %}
+                <span class="fw-semibold">{{ u.username }}</span>
+              {% endif %}
+            {% endfor %}
+          </h5>
+          <div class="text-muted-small">Trueque: <em>{{ chat_seleccionado.trueque.producto.nombre }}</em></div>
+        </div>
+
+        <div class="btn-group">
+          <button id="btn-reportar" class="btn btn-outline-danger btn-sm">Reportar</button>
+          <button id="btn-calificar" class="btn btn-outline-warning btn-sm">Calificar</button>
+        </div>
+      </div>
+
+      <div id="chat-box">
+        {% for mensaje in chat_seleccionado.mensajes.all %}
+          <div class="{% if mensaje.autor == user %}text-end{% else %}text-start{% endif %}" data-msg-id="{{ mensaje.id }}">
+            <div class="bubble {% if mensaje.autor == user %}me{% else %}them{% endif %}">
+              <div class="small text-muted mb-1"><strong>{{ mensaje.autor.username }}</strong></div>
+              <div>{{ mensaje.contenido }}</div>
+              <div class="small text-muted mt-1">{{ mensaje.fecha|date:"d/m/Y H:i" }}</div>
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-muted">No hay mensajes aún.</p>
+        {% endfor %}
+      </div>
+
+      <form id="chat-form" method="post" action="{% url 'api_send_message' chat_seleccionado.id %}">
+        {% csrf_token %}
+        <div class="input-group mt-2">
+          <input type="text" id="mensaje" name="mensaje" maxlength="500"
+                class="form-control" placeholder="Escribe tu mensaje...">
+          <button type="submit" class="btn btn-success">Enviar</button>
+        </div>
+      </form>
+
+    {% else %}
+      <div class="text-muted">Selecciona un chat para comenzar a conversar.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="calificacionOverlay" style="display:none;">
+  <div class="calificacion-card text-center">
+    <button id="cerrarCalif" class="btn-close float-end" aria-label="Cerrar"></button>
+    <h4 class="mb-2">Calificar vendedor</h4>
+    <p class="text-muted-small mb-2">Selecciona tu calificación:</p>
+
+    <div id="ratingStars" class="mb-3">
+      {% for i in "12345" %}
+        <span class="star" data-value="{{ forloop.counter }}">★</span>
+      {% endfor %}
+    </div>
+
+    <button id="enviarCalif" class="btn btn-warning w-100">Enviar Calificación</button>
+  </div>
+</div>
+
+
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:3000;">
+  <div id="toastSwap" class="toast align-items-center text-bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMessage">Acción completada</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById("buscador").addEventListener("input", function () {
+    let filtro = this.value.toLowerCase().trim();
+    let items = document.querySelectorAll(".producto-item");
+
+    items.forEach(item => {
+        let texto = item.textContent.toLowerCase();
+        item.style.display = texto.includes(filtro) ? "" : "none";
+    });
+});
+
+function mostrarToast(msg, tipo='success') {
+  const toastEl = document.getElementById('toastSwap');
+  const toastMsg = document.getElementById('toastMessage');
+  if (!toastEl || !toastMsg) return;
+  toastMsg.innerText = msg;
+  toastEl.className = `toast align-items-center text-bg-${tipo} border-0`;
+  new bootstrap.Toast(toastEl).show();
+}
+function escapeHtml(t) {
+  return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+          .replace(/>/g,"&gt;").replace(/"/g,"&quot;")
+          .replace(/'/g,"&#039;");
+}
+const chatId = "{{ chat_seleccionado.id }}" || null;
+let lastMessageId = 0;
+
+(function initLastId() {
+  const box = document.getElementById('chat-box');
+  if (!box) return;
+  box.querySelectorAll('[data-msg-id]').forEach(n=>{
+    const id = parseInt(n.getAttribute('data-msg-id'));
+    if (id > lastMessageId) lastMessageId = id;
+  });
+  box.scrollTop = box.scrollHeight;
+})();
+
+if (chatId) {
+  setInterval(async () => {
+    try {
+      const urlTemplate = "{% url 'api_fetch_messages' 0 %}";
+      const url = urlTemplate.replace('/0/', `/${chatId}/`) + "?since_id=" + lastMessageId;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.mensajes) return;
+      const box = document.getElementById('chat-box');
+      if (!box) return;
+      data.mensajes.forEach(m => {
+        if (m.id <= lastMessageId) return;
+        const wrapper = document.createElement('div');
+        wrapper.className = (m.autor === "{{ user.username }}") ? "text-end" : "text-start";
+        wrapper.setAttribute("data-msg-id", m.id);
+        wrapper.innerHTML = `
+          <div class="bubble ${m.autor === "{{ user.username }}" ? 'me' : 'them'}">
+            <div class="small text-muted mb-1"><strong>${escapeHtml(m.autor)}</strong></div>
+            <div>${escapeHtml(m.contenido)}</div>
+            <div class="small text-muted mt-1">${escapeHtml(m.fecha)}</div>
+          </div>
+        `;
+        box.appendChild(wrapper);
+        lastMessageId = m.id;
+        box.scrollTop = box.scrollHeight;
+      });
+    } catch (err) {
+      console.error("Error en polling:", err);
+    }
+  }, 2000);
+}
+
+/* Envío de mensaje */
+const chatForm = document.getElementById("chat-form");
+if (chatForm) {
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("mensaje");
+    if (!input) return;
+    const texto = input.value.trim();
+    if (!texto) return;
+
+    const urlTemplate = "{% url 'api_send_message' 0 %}";
+    const url = urlTemplate.replace('/0/', `/${chatId}/`);
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
+        },
+        body: JSON.stringify({ texto })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        input.value = "";
+      } else {
+        mostrarToast(data.error || 'Error enviando mensaje', 'danger');
+      }
+    } catch (err) {
+      console.error(err);
+      mostrarToast('Error de conexión', 'danger');
+    }
+  });
+}
+
+/* Reporte SIMULADO */
+const btnReportar = document.getElementById("btn-reportar");
+if (btnReportar) {
+  btnReportar.addEventListener("click", () => {
+    mostrarToast(
+      "El equipo de soporte de Swap Place revisará su reporte y le informará dentro de 72 hrs.",
+      "danger"
+    );
+  });
+}
+
+/* Calificación SIMULADA */
+const overlay = document.getElementById("calificacionOverlay");
+const btnCalificar = document.getElementById("btn-calificar");
+const cerrarCalifBtn = document.getElementById("cerrarCalif");
+const enviarCalifBtn = document.getElementById("enviarCalif");
+const stars = document.querySelectorAll(".star");
+let calificacion = 0;
+
+function abrirOverlayCalif() {
+  overlay.style.display = "flex";
+  overlay.classList.add('d-flex');
+  calificacion = 0;
+  stars.forEach(s => s.classList.remove("selected"));
+}
+
+function cerrarOverlayCalif() {
+  overlay.style.display = "none";
+  overlay.classList.remove('d-flex');
+}
+if (btnCalificar) btnCalificar.addEventListener("click", abrirOverlayCalif);
+if (cerrarCalifBtn) cerrarCalifBtn.addEventListener("click", cerrarOverlayCalif);
+if (overlay) {
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) cerrarOverlayCalif();
+  });
+}
+if (stars.length) {
+  stars.forEach((s, i) => {
+    s.addEventListener("click", () => {
+      calificacion = i + 1;
+      stars.forEach(st => st.classList.remove("selected"));
+      for (let j = 0; j <= i; j++) stars[j].classList.add("selected");
+    });
+  });
+}
+
+if (enviarCalifBtn) {
+  enviarCalifBtn.addEventListener("click", () => {
+    if (!calificacion)
+      return mostrarToast("Selecciona una estrella", "warning");
+    cerrarOverlayCalif();
+    mostrarToast(`Calificación enviada: ${calificacion} ⭐`, "success");
+  });
+}
+</script>
+{% endblock %}

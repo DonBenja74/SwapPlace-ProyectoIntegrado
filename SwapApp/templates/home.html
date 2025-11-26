@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Home - SwapPlace{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-8"><h3>Últimos productos</h3></div>
+    <div class="col-4 text-end">
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalCrear">+ Agregar producto</button>
+    </div>
+</div>
+
+<!-- 🔍 BUSCADOR -->
+<div class="mb-4">
+    <input type="text" id="buscador"
+        placeholder="Buscar productos o usuarios..."
+        class="form-control">
+</div>
+
+{% if trueques_pendientes %}
+<div class="card mb-3">
+<div class="card-body">
+    <h5>Solicitudes de trueque</h5>
+    {% for t in trueques_pendientes %}
+    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+        <div>
+        <strong>{{ t.solicitante.username }}</strong> le interesó <strong>{{ t.producto.nombre }}</strong>
+        <div class="small text-muted">{{ t.fecha|date:"d/m/Y H:i" }}</div>
+        </div>
+        <div>
+        <form method="post" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="responder_trueque">
+            <input type="hidden" name="trueque_id" value="{{ t.id }}">
+            <button name="decision" value="aceptar" class="btn btn-success btn-sm me-1">Aceptar</button>
+            <button name="decision" value="rechazar" class="btn btn-danger btn-sm">Rechazar</button>
+        </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+</div>
+{% endif %}
+
+<!-- 🔁 CONTENEDOR QUE SE ACTUALIZA CON EL BUSCADOR -->
+<div class="row" id="lista-productos">
+
+{% for p in productos %}
+<div class="col-md-4 mb-4 producto-item">
+    <div class="card h-100 shadow-sm">
+    {% if p.imagen %}
+        <img src="{{ p.imagen.url }}" class="card-img-top" style="height:220px; object-fit:cover;">
+    {% else %}
+        <img src="{% static 'img/logo.png' %}" class="card-img-top" style="height:220px; object-fit:cover;">
+    {% endif %}
+    <div class="card-body d-flex flex-column">
+        <h5 class="card-title">{{ p.nombre }}</h5>
+        <p class="card-text">{{ p.descripcion|truncatechars:120 }}</p>
+
+        <div class="mt-auto d-flex justify-content-between align-items-center">
+        <small class="text-muted">Publicado por {{ p.usuario.username }}</small>
+        <div>
+
+            {% if request.user == p.usuario or request.user.username == 'admin3000' %}
+            <button class="btn btn-warning btn-sm me-1" data-bs-toggle="modal" data-bs-target="#modalEditar{{ p.id }}">Editar</button>
+            <form method="post" style="display:inline;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="eliminar_producto">
+                <input type="hidden" name="producto_id" value="{{ p.id }}">
+                <button class="btn btn-danger btn-sm" onclick="return confirm('Eliminar producto?')">Eliminar</button>
+            </form>
+
+            <!-- Modal Editar -->
+            <div class="modal fade" id="modalEditar{{ p.id }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="editar_producto">
+                    <input type="hidden" name="producto_id" value="{{ p.id }}">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Editar producto</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-2">
+                        <label class="form-label">Nombre</label>
+                        <input name="nombre" class="form-control" value="{{ p.nombre }}" required>
+                        </div>
+                        <div class="mb-2">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="descripcion" class="form-control" rows="3" required>{{ p.descripcion }}</textarea>
+                        </div>
+                        <div class="mb-2">
+                        <label class="form-label">Imagen (opcional)</label>
+                        <input type="file" name="imagen" class="form-control">
+                        {% if p.imagen %}
+                            <img src="{{ p.imagen.url }}" class="img-fluid mt-2" style="max-height:120px;">
+                        {% endif %}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-success" type="submit">Guardar</button>
+                        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                    </form>
+                </div>
+                </div>
+            </div>
+
+            {% else %}
+            <form method="post" style="display:inline;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="ofrecer_trueque">
+                <input type="hidden" name="producto_id" value="{{ p.id }}">
+                <button class="btn btn-success btn-sm">Ofrecer trueque</button>
+            </form>
+            {% endif %}
+
+        </div>
+        </div>
+    </div>
+    </div>
+</div>
+{% endfor %}
+
+</div>
+
+<!-- Modal Crear -->
+<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true">
+<div class="modal-dialog">
+    <div class="modal-content">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="crear_producto">
+        <div class="modal-header">
+        <h5 class="modal-title">Agregar producto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+        <div class="mb-2">
+            <label class="form-label">Nombre</label>
+            <input name="nombre" class="form-control" required>
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Descripción</label>
+            <textarea name="descripcion" class="form-control" rows="3" required></textarea>
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Imagen</label>
+            <input type="file" name="imagen" class="form-control">
+        </div>
+        </div>
+        <div class="modal-footer">
+        <button class="btn btn-success" type="submit">Guardar</button>
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+    </form>
+    </div>
+</div>
+</div>
+
+<script>
+document.getElementById("buscador").addEventListener("input", function () {
+    let filtro = this.value.toLowerCase().trim();
+    let items = document.querySelectorAll(".producto-item");
+
+    items.forEach(item => {
+        let texto = item.textContent.toLowerCase();
+        if (texto.includes(filtro)) {
+            item.style.display = "";
+        } else {
+            item.style.display = "none";
+        }
+    });
+});
+</script>
+
+{% endblock %}
